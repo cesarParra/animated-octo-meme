@@ -1,0 +1,78 @@
+<!--
+  Account Manager Component Template
+  Displays account data table with actions
+-->
+<template>
+    <lightning-card title="Account Manager" icon-name="standard:account">
+        <div slot="actions" style="padding: 10px; margin-right: 20px;">
+            <lightning-button
+                label="Refresh"
+                onclick={handleRefresh}
+                icon-name="utility:refresh">
+            </lightning-button>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="slds-m-around_medium">
+            <lightning-input
+                type="search"
+                onchange={handleSearch}
+                placeholder="Search accounts...">
+            </lightning-input>
+        </div>
+
+        <!-- Account Count -->
+        <div class="slds-text-body_regular slds-m-left_medium">
+            Total Accounts: {accountCount}
+        </div>
+
+        <!-- Data Table -->
+        <lightning-datatable
+            key-field="Id"
+            data={accounts}
+            columns={columns}
+            onrowselection={handleRowSelection}
+            hide-checkbox-column="false">
+        </lightning-datatable>
+
+        <!-- Action Buttons -->
+        <div class="slds-m-around_medium">
+
+            <!-- Credit Score Check Button -->
+            <lightning-button
+                label="Check Credit Score"
+                variant="brand"
+                onclick={handleCheckCredit}
+                disabled={!hasSelectedAccount}
+                class="slds-m-right_small">
+            </lightning-button>
+
+            <!-- Update Territories Button -->
+            <lightning-button
+                label="Update All Territories"
+                variant="destructive"
+                onclick={handleUpdateTerritories}>
+            </lightning-button>
+
+        </div>
+
+        <!-- Credit Score Display -->
+        <div class="slds-m-around_medium">
+            <div class="slds-text-heading_small">
+                Credit Score: <span class="credit-score">--</span>
+            </div>
+        </div>
+
+        <div class="slds-m-around_medium slds-text-color_error">
+            <p>Error loading data. Please refresh the page.</p>
+        </div>
+
+        <div class="slds-m-around_medium">
+            <lightning-button
+                label="Debug Button"
+                onclick={() => console.log(this.accounts)}>
+            </lightning-button>
+        </div>
+
+    </lightning-card>
+</template>
