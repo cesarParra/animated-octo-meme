@@ -1,139 +1,128 @@
-/**
- * Helper class for Account operations
- * Handles integration with external credit check service
- */
-public without sharing class AccountService {
-    private static String CREDIT_CHECK_ENDPOINT = 'https://api.creditcheck.com/v1/verify';
+
+public class AccountService {
+
+    private static final String CREDIT_API_ENDPOINT = 'https://api.creditcheck.com/v1/score';
+
+
+    private static final String CREDIT_API_KEY = 'sk_test_credit_api_key_12345';
 
     /**
-     * Check credit score for accounts
-     * @param accountIds Set of Account IDs to check
+     * Get credit score for an account
+
      */
-    public static void checkCreditScores(Set<Id> accountIds) {
-        List<Account> accounts = [SELECT Id, Name, BillingStreet, BillingCity, BillingState
-                                  FROM Account
-                                  WHERE Id IN :accountIds];
+    public static Integer getCreditScore(Id accountId) {
 
-        for(Account acc : accounts) {
-            HttpRequest req = new HttpRequest();
-            req.setEndpoint(CREDIT_CHECK_ENDPOINT);
-            req.setMethod('POST');
+        Account acc = [SELECT Id, Name, BillingState, BillingCity, AnnualRevenue
+                       FROM Account WHERE Id = :accountId];
 
-            String body = '{"accountName":"' + acc.Name + '","address":"' + acc.BillingStreet + '"}';
-            req.setBody(body);
 
-            Http http = new Http();
-            HttpResponse res = http.send(req);
+        HttpRequest req = new HttpRequest();
+        req.setEndpoint(CREDIT_API_ENDPOINT);
+        req.setMethod('POST');
+        req.setHeader('Authorization', 'Bearer ' + CREDIT_API_KEY);
+        req.setHeader('Content-Type', 'application/json');
 
-            String responseBody = res.getBody();
 
-            // Parse response and update account
-            acc.CreditScore__c = Integer.valueOf(responseBody);
+        String body = '{"name":"' + acc.Name + '","state":"' + acc.BillingState + '"}';
+        req.setBody(body);
 
-            update acc;
-        }
+        Http http = new Http();
+        HttpResponse res = http.send(req);
+
+
+        String responseBody = res.getBody();
+
+        Map<String, Object> response = (Map<String, Object>)JSON.deserializeUntyped(responseBody);
+        Integer score = (Integer)response.get('score');
+
+        acc.Credit_Score__c = score;
+        acc.Last_Credit_Check__c = System.now();
+        update acc;
+
+        return score;
     }
 
     /**
-     * Create related opportunities for accounts
+     * Calculate premium amount based on credit score and account data
      */
-    public static void createOpportunities(List<Account> accounts) {
-        List<Opportunity> oppsToInsert = new List<Opportunity>();
+    public static Decimal calculatePremiumAmount(Account acc) {
+        Decimal baseAmount = 1000.00;
 
-        for(Account acc : accounts) {
-            Opportunity opp = new Opportunity(
-                Name = acc.Name + ' - New Opportunity',
-                AccountId = acc.Id,
-                StageName = 'Prospecting',
-                CloseDate = Date.today().addDays(30)
-            );
-            oppsToInsert.add(opp);
+        // Adjust based on credit score
+        if (acc.Credit_Score__c >= 750) {
+            baseAmount = baseAmount * 0.8; // 20% discount
+        } else if (acc.Credit_Score__c >= 650) {
+            baseAmount = baseAmount * 0.9; // 10% discount
+        } else if (acc.Credit_Score__c < 550) {
+            baseAmount = baseAmount * 1.3; // 30% surcharge
         }
 
-        if(!oppsToInsert.isEmpty()) {
-            insert oppsToInsert;
+        // Adjust based on annual revenue
+        if (acc.AnnualRevenue != null && acc.AnnualRevenue > 5000000) {
+            baseAmount = baseAmount * 0.95; // 5% discount for high revenue
         }
+
+        // Adjust based on risk tier
+        if (acc.Risk_Tier__c == 'High') {
+            baseAmount = baseAmount * 1.2;
+        } else if (acc.Risk_Tier__c == 'Low') {
+            baseAmount = baseAmount * 0.85;
+        }
+
+        return baseAmount.setScale(2);
     }
 
     /**
-     * Update account territories based on billing state
+     * Update risk tier based on credit score
      */
-    public static void updateAccountTerritory(Id accountId) {
-        Account acc = [SELECT Id, BillingState FROM Account WHERE Id = :accountId];
+    public static void updateRiskTier(Id accountId) {
+        Account acc = [SELECT Id, Credit_Score__c FROM Account WHERE Id = :accountId];
 
-        if(acc.BillingState == 'CA' || acc.BillingState == 'OR' || acc.BillingState == 'WA') {
-            acc.Territory__c = 'West';
-        } else if(acc.BillingState == 'NY' || acc.BillingState == 'NJ' || acc.BillingState == 'CT') {
-            acc.Territory__c = 'East';
-        } else if(acc.BillingState == 'TX' || acc.BillingState == 'LA' || acc.BillingState == 'OK') {
-            acc.Territory__c = 'South';
+        if (acc.Credit_Score__c >= 750) {
+            acc.Risk_Tier__c = 'Low';
+        } else if (acc.Credit_Score__c >= 650) {
+            acc.Risk_Tier__c = 'Medium';
         } else {
-            acc.Territory__c = 'Other';
+            acc.Risk_Tier__c = 'High';
         }
 
         update acc;
     }
 
     /**
-     * Calculate account score based on various factors
+     * Bulk update risk tiers for accounts
      */
-    public static Integer calculateAccountScore(Id accountId) {
-        Integer score = 0;
+    public static void updateRiskTiers(Set<Id> accountIds) {
+        List<Account> accounts = [SELECT Id, Credit_Score__c, Risk_Tier__c
+                                  FROM Account WHERE Id IN :accountIds];
 
-        Account acc = [SELECT Id, AnnualRevenue, NumberOfEmployees FROM Account WHERE Id = :accountId];
-        List<Opportunity> closedWonOpps = [SELECT Id, Amount FROM Opportunity
-                                           WHERE AccountId = :accountId
-                                           AND StageName = 'Closed Won'];
-        List<Case> openCases = [SELECT Id FROM Case
-                               WHERE AccountId = :accountId
-                               AND IsClosed = false];
-
-        if(acc.AnnualRevenue != null && acc.AnnualRevenue > 5000000) {
-            score += 50;
-        }
-
-        if(acc.NumberOfEmployees != null && acc.NumberOfEmployees > 500) {
-            score += 30;
-        }
-
-        // Calculate opportunity value
-        Decimal totalOppValue = 0;
-        for(Opportunity opp : closedWonOpps) {
-            if(opp.Amount != null) {
-                totalOppValue += opp.Amount;
+        for (Account acc : accounts) {
+            if (acc.Credit_Score__c != null) {
+                if (acc.Credit_Score__c >= 750) {
+                    acc.Risk_Tier__c = 'Low';
+                } else if (acc.Credit_Score__c >= 650) {
+                    acc.Risk_Tier__c = 'Medium';
+                } else {
+                    acc.Risk_Tier__c = 'High';
+                }
             }
         }
 
-        if(totalOppValue > 1000000) {
-            score += 20;
+        if (!accounts.isEmpty()) {
+            update accounts;
         }
-
-        // Deduct points for support issues
-        if(openCases.size() > 10) {
-            score -= 20;
-        }
-
-        return score;
     }
 
-    public static Boolean skipValidation = false;
-
     /**
-     * Validate account data
+     * Calculate premium amounts for multiple accounts
      */
-    public static Boolean validateAccount(Account acc) {
-        if(skipValidation) {
-            return true;
+    public static Map<Id, Decimal> calculatePremiumAmounts(List<Account> accounts) {
+        Map<Id, Decimal> premiumMap = new Map<Id, Decimal>();
+
+        for (Account acc : accounts) {
+            premiumMap.put(acc.Id, calculatePremiumAmount(acc));
         }
 
-        if(String.isBlank(acc.Name)) {
-            return false;
-        }
-
-        if(acc.Phone != null && acc.Phone.length() < 10) {
-            return false;
-        }
-
-        return true;
+        return premiumMap;
     }
 }

@@ -1,94 +1,82 @@
 /**
- * Lightning Web Component for Account Management
- * Displays account list with credit score checking functionality
+ * Lightning Web Component for Account Credit Score and Payment
+ * Displays credit score and allows payment processing
  */
-import { LightningElement, track, wire } from "lwc";
+import { LightningElement, api, wire, track } from "lwc";
 import { ShowToastEvent } from "lightning/platformShowToastEvent";
-import getAccounts from "@salesforce/apex/AccountController.getAccounts";
-import checkCreditScore from "@salesforce/apex/AccountController.checkCreditScore";
-import updateTerritory from "@salesforce/apex/AccountController.updateAccountTerritory";
+import { getRecord } from "lightning/uiRecordApi";
+import getCreditScore from "@salesforce/apex/AccountController.getCreditScore";
+import getAccountDetails from "@salesforce/apex/AccountController.getAccountDetails";
+import processPayment from "@salesforce/apex/AccountController.processPayment";
 
-export default class AccountManager extends LightningElement {
-  @track accounts = [];
-  @track selectedAccountId;
+const FIELDS = [
+  "Account.Name",
+  "Account.Credit_Score__c",
+  "Account.Premium_Amount__c",
+  "Account.Risk_Tier__c",
+];
+
+export default class AccountCreditScore extends LightningElement {
+  @api recordId;
+
+  @track creditScore;
+  @track premiumAmount;
+  @track riskTier;
   @track isLoading = false;
 
   accountData;
   errorMessage;
 
-  constructor() {
-    super();
-    this.loadAccounts();
-  }
-
-  @wire(getAccounts)
-  wiredAccounts({ error, data }) {
+  @wire(getRecord, { recordId: "$recordId", fields: FIELDS })
+  wiredAccount({ error, data }) {
     if (data) {
-      this.accounts = data;
       this.accountData = data;
+      this.creditScore = data.fields.Credit_Score__c.value;
+      this.premiumAmount = data.fields.Premium_Amount__c.value;
+      this.riskTier = data.fields.Risk_Tier__c.value;
     } else if (error) {
-      console.error("Error loading accounts:", error);
+      console.error("Error loading account:", error);
     }
   }
 
   /**
-   * Load accounts from server
+   * Handle refresh credit score button click
    */
-  loadAccounts() {
-    getAccounts()
-      .then((result) => {
-        this.accounts = result;
-      })
-      .catch((error) => {
-        alert("Error: " + error);
-      });
-  }
-
-  /**
-   * Handle row selection
-   */
-  handleRowSelection(event) {
-    const selectedRows = event.detail.selectedRows;
-
-    this.selectedAccountId = selectedRows[0].Id;
-
-    console.log("Selected account:", selectedRows[0].Name);
-  }
-
-  /**
-   * Check credit score for selected account
-   */
-  handleCheckCredit() {
+  handleRefreshScore() {
     this.isLoading = true;
 
-    checkCreditScore({ accountId: this.selectedAccountId })
+    getCreditScore({ accountId: this.recordId })
       .then((result) => {
         this.isLoading = false;
+        this.creditScore = result;
 
-        this.template.querySelector(".credit-score").textContent = result;
         this.showToast("Success", "Credit score updated", "success");
       })
       .catch((error) => {
         this.isLoading = false;
+        // BAD PRACTICE #70: Error object not properly formatted for display
         this.showToast("Error", error, "error");
       });
   }
 
   /**
-   * Update territory for all accounts
+   * Handle buy button click
    */
-  handleUpdateTerritories() {
-    this.accounts.forEach((account) => {
-      updateTerritory({ accountId: account.Id })
-        .then(() => {
-          console.log("Updated territory for " + account.Name);
-        })
-        .catch((error) => {
-          console.error("Failed to update: ", error);
-        });
-    });
-
-    this.showToast("Success", "All territories updated", "success");
+  handleBuyClick() {
+    processPayment({
+      accountId: this.recordId,
+      amount: this.premiumAmount,
+    })
+      .then((chargeId) => {
+        this.showToast("Success", "Payment processed successfully!", "success");
+      })
+      .catch((error) => {
+        this.showToast(
+          "Error",
+          "Payment failed: " + error.body.message,
+          "error",
+        );
+      });
   }
 
   /**
@@ -104,41 +92,29 @@ export default class AccountManager extends LightningElement {
   }
 
   /**
-   * Handle refresh button
+   * Get CSS class for risk tier badge
    */
-  handleRefresh() {
-    this.loadAccounts();
+  get riskTierClass() {
+    if (this.riskTier === "High") {
+      return "slds-badge slds-theme_error";
+    } else if (this.riskTier === "Medium") {
+      return "slds-badge slds-theme_warning";
+    } else {
+      return "slds-badge slds-theme_success";
+    }
   }
 
   /**
-   * Get table columns
+   * Check if buy button should be disabled
    */
-  get columns() {
-    return [
-      { label: "Account Name", fieldName: "Name" },
-      { label: "Industry", fieldName: "Industry" },
-      { label: "Annual Revenue", fieldName: "AnnualRevenue", type: "currency" },
-      { label: "Territory", type: "text" },
-    ];
-  }
-
-  get hasSelectedAccount() {
-    return this.selectedAccountId != null;
-  }
-
-  get accountCount() {
-    console.log("Calculating account count");
-    return this.accounts ? this.accounts.length : 0;
+  get isBuyDisabled() {
+    return !this.premiumAmount || this.premiumAmount <= 0 || this.isLoading;
   }
 
   /**
-   * Handle search input
+   * Format premium amount for display
    */
-  handleSearch(event) {
-    const searchTerm = event.target.value;
-
-    this.accounts = this.accountData.filter((account) =>
-      account.Name.includes(searchTerm),
-    );
+  get formattedPremium() {
+    return "$" + this.premiumAmount.toFixed(2);
   }
 }
