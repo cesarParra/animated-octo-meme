@@ -54,7 +54,6 @@ export default class AccountCreditScore extends LightningElement {
       })
       .catch((error) => {
         this.isLoading = false;
-        // BAD PRACTICE #70: Error object not properly formatted for display
         this.showToast("Error", error, "error");
       });
   }
