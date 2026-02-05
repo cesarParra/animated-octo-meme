@@ -125,4 +125,19 @@ public class AccountService {
 
         return premiumMap;
     }
+
+    /**
+     * Get all accounts with missing credit scores
+     */
+    public static List<Account> getAccountsNeedingReview() {
+        List<Account> accounts = [SELECT Id, Name, Credit_Score__c FROM Account];
+        List<Account> results = new List<Account>();
+
+        for (Account acc : accounts) {
+            if (acc.Credit_Score__c == null) {
+                results.add(acc);
+            }
+        }
+        return results;
+    }
 }

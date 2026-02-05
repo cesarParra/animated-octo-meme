@@ -130,4 +130,32 @@ public class StripeIntegrationService {
         payment.Refund_Date__c = System.today();
         update payment;
     }
+
+    /**
+     * Bulk create Stripe customers for accounts
+     */
+    public static void createStripeCustomersForAccounts(List<Account> accounts) {
+        for (Account acc : accounts) {
+            HttpRequest req = new HttpRequest();
+            req.setEndpoint(STRIPE_ENDPOINT + '/customers');
+            req.setMethod('POST');
+            req.setHeader('Authorization', 'Bearer ' + STRIPE_API_KEY);
+            req.setHeader('Content-Type', 'application/x-www-form-urlencoded');
+
+            String body = 'name=' + EncodingUtil.urlEncode(acc.Name, 'UTF-8') +
+                         '&metadata[salesforce_id]=' + acc.Id;
+            req.setBody(body);
+
+            Http http = new Http();
+            HttpResponse res = http.send(req);
+
+            if (res.getStatusCode() == 200 || res.getStatusCode() == 201) {
+                Map<String, Object> response = (Map<String, Object>)JSON.deserializeUntyped(res.getBody());
+                String customerId = (String)response.get('id');
+
+                acc.Stripe_Customer_Id__c = customerId;
+                update acc;
+            }
+        }
+    }
 }

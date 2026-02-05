@@ -42,6 +42,18 @@ trigger AccountTrigger on Account (before update, after update) {
             }
         }
 
+        // Send email notifications for score changes
+        for (Account acc : Trigger.new) {
+            Account oldAccount = Trigger.oldMap.get(acc.Id);
+            if (acc.Credit_Score__c != oldAccount.Credit_Score__c) {
+                Messaging.SingleEmailMessage email = new Messaging.SingleEmailMessage();
+                email.setToAddresses(new String[]{'admin@company.com'});
+                email.setSubject('Credit Score Changed');
+                email.setPlainTextBody('Score changed for ' + acc.Name);
+                Messaging.sendEmail(new Messaging.SingleEmailMessage[]{email});
+            }
+        }
+
         // Create task for high-risk accounts
         List<Task> tasksToCreate = new List<Task>();
 
