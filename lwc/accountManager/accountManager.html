@@ -1,0 +1,40 @@
+<template>
+    <lightning-card title="Account Credit Information" icon-name="standard:account">
+        <div class="slds-m-around_medium">
+
+            <!-- Account Name -->
+            <div class="slds-m-bottom_small">
+                <strong>{accountName}</strong>
+            </div>
+
+            <!-- Credit Score Section -->
+            <div class="slds-grid slds-gutters slds-m-bottom_medium">
+                <div class="slds-col slds-size_1-of-2">
+                    <div class="slds-text-heading_small">Credit Score</div>
+                    <div class="slds-text-heading_large">{creditScore}</div>
+
+                    <lightning-button
+                        label="Refresh Score"
+                        onclick={handleRefreshScore}
+                        variant="brand"
+                        class="slds-m-top_small">
+                    </lightning-button>
+                </div>
+
+                <div class="slds-col slds-size_1-of-2">
+                    <div class="slds-text-heading_small">Risk Tier</div>
+                    <span class={riskTierClass}>{riskTier}</span>
+                </div>
+            </div>
+
+            <!-- Premium Amount -->
+            <div class="slds-m-bottom_medium">
+                <div class="slds-text-heading_small">Monthly Premium</div>
+                <div class="slds-text-heading_medium slds-text-color_success">
+                    {formattedPremium}
+                </div>
+            </div>
+
+        </div>
+    </lightning-card>
+</template>
