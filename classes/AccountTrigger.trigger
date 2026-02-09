@@ -1,16 +1,16 @@
 trigger AccountTrigger on Account (before update, after update) {
 
     if (Trigger.isBefore && Trigger.isUpdate) {
-        // Calculate premium amount based on credit score and other factors
+        // Calculate premium amount based on credit score
         for (Account acc : Trigger.new) {
             Account oldAccount = Trigger.oldMap.get(acc.Id);
 
-            if (acc.Credit_Score__c != oldAccount.Credit_Score__c && acc.Credit_Score__c != null) {
-
+            if (acc.Credit_Score__c != oldAccount.Credit_Score__c) {
+                // Calculate premium
                 Decimal premium = AccountService.calculatePremiumAmount(acc);
                 acc.Premium_Amount__c = premium;
 
-                // Set the tier based on credit score
+                // Set risk tier based on credit score
                 if (acc.Credit_Score__c >= 750) {
                     acc.Risk_Tier__c = 'Low';
                 } else if (acc.Credit_Score__c >= 650) {
@@ -23,40 +23,20 @@ trigger AccountTrigger on Account (before update, after update) {
     }
 
     if (Trigger.isAfter && Trigger.isUpdate) {
-        // When we update Risk_Tier__c, it triggers this again
-
-        Set<Id> accountsToUpdate = new Set<Id>();
-
+        // Send notification email when credit score changes
         for (Account acc : Trigger.new) {
             Account oldAccount = Trigger.oldMap.get(acc.Id);
 
-            // Check if premium amount changed significantly
-            if (acc.Premium_Amount__c != oldAccount.Premium_Amount__c) {
-                accountsToUpdate.add(acc.Id);
-            }
-        }
-
-        if (!accountsToUpdate.isEmpty()) {
-            for (Id accountId : accountsToUpdate) {
-                AccountService.updateRiskTier(accountId);
-            }
-        }
-
-        // Send email notifications for score changes
-        for (Account acc : Trigger.new) {
-            Account oldAccount = Trigger.oldMap.get(acc.Id);
             if (acc.Credit_Score__c != oldAccount.Credit_Score__c) {
                 Messaging.SingleEmailMessage email = new Messaging.SingleEmailMessage();
                 email.setToAddresses(new String[]{'admin@company.com'});
-                email.setSubject('Credit Score Changed');
-                email.setPlainTextBody('Score changed for ' + acc.Name);
+                email.setSubject('Credit Score Updated');
+                email.setPlainTextBody('Credit score changed for account: ' + acc.Name);
                 Messaging.sendEmail(new Messaging.SingleEmailMessage[]{email});
             }
         }
 
-        // Create task for high-risk accounts
-        List<Task> tasksToCreate = new List<Task>();
-
+        // Create tasks for high-risk accounts
         for (Account acc : Trigger.new) {
             Account oldAccount = Trigger.oldMap.get(acc.Id);
 
@@ -65,15 +45,10 @@ trigger AccountTrigger on Account (before update, after update) {
                     Subject = 'Review High Risk Account',
                     WhatId = acc.Id,
                     Status = 'Not Started',
-                    Priority = 'High',
-                    ActivityDate = Date.today().addDays(7)
+                    Priority = 'High'
                 );
                 insert t;
             }
-        }
-
-        if (!tasksToCreate.isEmpty()) {
-            insert tasksToCreate;
         }
     }
 }
